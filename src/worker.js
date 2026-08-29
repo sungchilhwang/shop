@@ -157,7 +157,7 @@ export default {
     const headers = new Headers(response.headers);
     headers.set('X-Content-Type-Options', 'nosniff');
     headers.set('Referrer-Policy', 'same-origin');
-    headers.set('Content-Security-Policy', "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self' https://js.tosspayments.com; connect-src 'self' https://api.tosspayments.com https://payment-widget.tosspayments.com https://payment-gateway.tosspayments.com; frame-src https://payment-widget.tosspayments.com https://payment-gateway.tosspayments.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'");
+    headers.set('Content-Security-Policy', "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self' https://js.tosspayments.com; connect-src 'self' https://api.tosspayments.com https://apigw.tosspayments.com https://connect.tosspayments.com https://event.tosspayments.com https://log.tosspayments.com https://payment-widget.tosspayments.com https://payment-gateway.tosspayments.com https://payment-gateway-sandbox.tosspayments.com; frame-src https://payment-widget.tosspayments.com https://payment-gateway.tosspayments.com https://payment-gateway-sandbox.tosspayments.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'");
     if (pathname === '/cart' || pathname === '/mypage' || pathname.startsWith('/orders') || pathname.startsWith('/api/auth') || pathname === '/api/mypage' || pathname.startsWith('/api/cart') || pathname.startsWith('/api/orders') || pathname.startsWith('/api/payments')) headers.set('Cache-Control', 'no-store');
     return new Response(response.body, { status: response.status, headers });
   },
