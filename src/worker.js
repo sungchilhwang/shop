@@ -1,4 +1,7 @@
+import { compare, hash } from 'bcryptjs';
+
 const COOKIE = 'shop_session';
+const AUTH_COOKIE = 'shop_auth';
 const CATEGORIES = new Set(['잡화', '뷰티', '신발', '식품']);
 
 function json(data, status = 200, extra = {}) {
@@ -35,6 +38,53 @@ async function sessionFor(request, env) {
   return { id, cookie: fresh ? `${COOKIE}=${encodeURIComponent(id)}; Path=/; HttpOnly; SameSite=Lax${new URL(request.url).protocol === 'https:' ? '; Secure' : ''}; Max-Age=31536000` : null };
 }
 
+
+function authCookie(request, id, maxAge = 604800) {
+  const secure = new URL(request.url).protocol === 'https:' ? '; Secure' : '';
+  return AUTH_COOKIE + '=' + encodeURIComponent(id) + '; Path=/; HttpOnly; SameSite=Lax' + secure + '; Max-Age=' + maxAge;
+}
+async function currentUser(request, env) {
+  const token = parseCookie(request, AUTH_COOKIE);
+  if (!token || !/^[a-f0-9-]{20,80}$/i.test(token)) return null;
+  return await env.DB.prepare("SELECT s.id AS sessionId, u.id, u.email, u.name FROM auth_sessions s JOIN users u ON u.id = s.user_id WHERE s.id = ? AND s.expires_at > datetime('now')").bind(token).first();
+}
+async function mergeGuestCart(request, env, userId) {
+  const guestId = parseCookie(request, COOKIE); if (!guestId) return;
+  const { results } = await env.DB.prepare('SELECT product_id AS productId, qty FROM cart_items WHERE session_id = ?').bind(guestId).all();
+  if (!results?.length) return;
+  const statements = [];
+  for (const item of results) {
+    const existing = await env.DB.prepare('SELECT id, qty FROM cart_items WHERE user_id = ? AND product_id = ?').bind(userId, item.productId).first();
+    const qty = Math.min(99, item.qty + (existing?.qty || 0));
+    statements.push(existing ? env.DB.prepare('UPDATE cart_items SET qty = ? WHERE id = ?').bind(qty, existing.id) : env.DB.prepare('INSERT INTO cart_items (user_id, product_id, qty) VALUES (?, ?, ?)').bind(userId, item.productId, qty));
+  }
+  statements.push(env.DB.prepare('DELETE FROM cart_items WHERE session_id = ?').bind(guestId)); await env.DB.batch(statements);
+}
+async function createAuthSession(request, env, userId) {
+  const id = crypto.randomUUID(); const expires = new Date(Date.now() + 604800000).toISOString();
+  await env.DB.prepare('INSERT INTO auth_sessions (id, user_id, expires_at) VALUES (?, ?, ?)').bind(id, userId, expires).run(); return authCookie(request, id);
+}
+function validEmail(value) { const email = typeof value === 'string' ? value.trim().toLowerCase() : ''; return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length <= 254 ? email : null; }
+function validName(value) { const name = typeof value === 'string' ? value.trim() : ''; return name.length >= 1 && name.length <= 100 ? name : null; }
+async function authMe(request, env) { const user = await currentUser(request, env); return user ? json({ user: { id: user.id, email: user.email, name: user.name } }) : error('로그인이 필요합니다.', 401); }
+async function signup(request, env) {
+  const body = await request.json().catch(() => null); const email = validEmail(body?.email); const password = typeof body?.password === 'string' ? body.password : ''; const name = validName(body?.name);
+  if (!email || password.length < 8 || password.length > 128 || !name) return error('이메일, 8자 이상 비밀번호, 이름을 확인해 주세요.');
+  const passwordHash = await hash(password, 12); let result;
+  try { result = await env.DB.prepare('INSERT INTO users (email, password_hash, name) VALUES (?, ?, ?)').bind(email, passwordHash, name).run(); } catch (err) { if (String(err).includes('UNIQUE')) return error('이미 가입된 이메일입니다.', 409); throw err; }
+  const cookie = await createAuthSession(request, env, result.meta.last_row_id); await mergeGuestCart(request, env, result.meta.last_row_id);
+  return withCookie(json({ user: { id: result.meta.last_row_id, email, name } }, 201), cookie);
+}
+async function login(request, env) {
+  const body = await request.json().catch(() => null); const email = validEmail(body?.email); const password = typeof body?.password === 'string' ? body.password : '';
+  if (!email || !password) return error('이메일과 비밀번호를 확인해 주세요.');
+  const user = await env.DB.prepare('SELECT id, email, name, password_hash AS passwordHash FROM users WHERE email = ?').bind(email).first();
+  if (!user || !(await compare(password, user.passwordHash))) return error('이메일 또는 비밀번호가 올바르지 않습니다.', 401);
+  const cookie = await createAuthSession(request, env, user.id); await mergeGuestCart(request, env, user.id);
+  return withCookie(json({ user: { id: user.id, email: user.email, name: user.name } }), cookie);
+}
+async function logout(request, env) { const token = parseCookie(request, AUTH_COOKIE); if (token) await env.DB.prepare('DELETE FROM auth_sessions WHERE id = ?').bind(token).run(); return withCookie(json({ ok: true }), authCookie(request, '', 0)); }
+
 function validId(value) {
   const id = Number(value);
   return Number.isInteger(id) && id > 0 ? id : null;
@@ -67,102 +117,26 @@ async function product(id, env) {
   return row ? json({ product: row }) : error('상품을 찾을 수 없습니다.', 404);
 }
 
-async function cart(request, env) {
-  const session = await sessionFor(request, env);
-  const rows = await env.DB.prepare(`
-    SELECT c.id, c.product_id AS productId, c.qty, p.name, p.price, p.description,
-           cat.name AS category, p.image_url AS imageUrl, (c.qty * p.price) AS subtotal
-    FROM cart_items c JOIN products p ON p.id = c.product_id JOIN categories cat ON cat.id = p.category_id
-    WHERE c.session_id = ? ORDER BY c.id
-  `).bind(session.id).all();
-  const items = rows.results || [];
-  const total = items.reduce((sum, item) => sum + item.subtotal, 0);
-  return withCookie(json({ items, total }), session.cookie);
-}
+async function cart(request, env) { const user = await currentUser(request, env); if (!user) return error('로그인이 필요합니다.', 401); const rows = await env.DB.prepare('SELECT c.id, c.product_id AS productId, c.qty, p.name, p.price, p.description, cat.name AS category, p.image_url AS imageUrl, (c.qty * p.price) AS subtotal FROM cart_items c JOIN products p ON p.id = c.product_id JOIN categories cat ON cat.id = p.category_id WHERE c.user_id = ? ORDER BY c.id').bind(user.id).all(); const items = rows.results || []; return json({ items, total: items.reduce((sum, item) => sum + item.subtotal, 0) }); }
 
-async function addCart(request, env) {
-  const body = await request.json().catch(() => null);
-  const productId = validId(body?.productId);
-  const qty = validQty(body?.qty);
-  if (!productId || !qty) return error('상품과 수량을 확인해 주세요.');
-  const found = await env.DB.prepare('SELECT id FROM products WHERE id = ?').bind(productId).first();
-  if (!found) return error('상품을 찾을 수 없습니다.', 404);
-  const session = await sessionFor(request, env);
-  const current = await env.DB.prepare('SELECT id, qty FROM cart_items WHERE session_id = ? AND product_id = ?').bind(session.id, productId).first();
-  const nextQty = current ? current.qty + qty : qty;
-  if (nextQty > 99) return error('상품 수량은 99개 이하로 담을 수 있습니다.');
-  const statement = current
-    ? env.DB.prepare('UPDATE cart_items SET qty = ? WHERE id = ?').bind(nextQty, current.id)
-    : env.DB.prepare('INSERT INTO cart_items (session_id, product_id, qty) VALUES (?, ?, ?)').bind(session.id, productId, qty);
-  await statement.run();
-  return withCookie(json({ ok: true }), session.cookie);
-}
+async function addCart(request, env) { const user = await currentUser(request, env); if (!user) return error('로그인이 필요합니다.', 401); const body = await request.json().catch(() => null); const productId = validId(body?.productId); const qty = validQty(body?.qty); if (!productId || !qty) return error('상품과 수량을 확인해 주세요.'); if (!(await env.DB.prepare('SELECT id FROM products WHERE id = ?').bind(productId).first())) return error('상품을 찾을 수 없습니다.', 404); const current = await env.DB.prepare('SELECT id, qty FROM cart_items WHERE user_id = ? AND product_id = ?').bind(user.id, productId).first(); const nextQty = current ? current.qty + qty : qty; if (nextQty > 99) return error('상품 수량은 99개 이하로 담을 수 있습니다.'); const statement = current ? env.DB.prepare('UPDATE cart_items SET qty = ? WHERE id = ? AND user_id = ?').bind(nextQty, current.id, user.id) : env.DB.prepare('INSERT INTO cart_items (user_id, product_id, qty) VALUES (?, ?, ?)').bind(user.id, productId, qty); await statement.run(); return json({ ok: true }); }
 
-async function updateCart(request, env, itemId) {
-  const qty = validQty((await request.json().catch(() => null))?.qty);
-  const id = validId(itemId);
-  if (!id || !qty) return error('항목과 수량을 확인해 주세요.');
-  const session = await sessionFor(request, env);
-  const result = await env.DB.prepare('UPDATE cart_items SET qty = ? WHERE id = ? AND session_id = ?').bind(qty, id, session.id).run();
-  return result.meta.changes ? withCookie(json({ ok: true }), session.cookie) : error('장바구니 항목을 찾을 수 없습니다.', 404);
-}
+async function updateCart(request, env, itemId) { const qty = validQty((await request.json().catch(() => null))?.qty); const id = validId(itemId); if (!id || !qty) return error('항목과 수량을 확인해 주세요.'); const user = await currentUser(request, env); if (!user) return error('로그인이 필요합니다.', 401); const result = await env.DB.prepare('UPDATE cart_items SET qty = ? WHERE id = ? AND user_id = ?').bind(qty, id, user.id).run(); return result.meta.changes ? json({ ok: true }) : error('장바구니 항목을 찾을 수 없습니다.', 404); }
 
-async function deleteCart(request, env, itemId) {
-  const id = validId(itemId);
-  if (!id) return error('항목을 확인해 주세요.');
-  const session = await sessionFor(request, env);
-  const result = await env.DB.prepare('DELETE FROM cart_items WHERE id = ? AND session_id = ?').bind(id, session.id).run();
-  return result.meta.changes ? withCookie(json({ ok: true }), session.cookie) : error('장바구니 항목을 찾을 수 없습니다.', 404);
-}
+async function deleteCart(request, env, itemId) { const id = validId(itemId); if (!id) return error('항목을 확인해 주세요.'); const user = await currentUser(request, env); if (!user) return error('로그인이 필요합니다.', 401); const result = await env.DB.prepare('DELETE FROM cart_items WHERE id = ? AND user_id = ?').bind(id, user.id).run(); return result.meta.changes ? json({ ok: true }) : error('장바구니 항목을 찾을 수 없습니다.', 404); }
 
-async function createOrder(request, env) {
-  const session = await sessionFor(request, env);
-  const { results: items } = await env.DB.prepare(`
-    SELECT c.product_id AS productId, c.qty, p.price, p.name, p.image_url AS imageUrl
-    FROM cart_items c JOIN products p ON p.id = c.product_id WHERE c.session_id = ? ORDER BY c.id
-  `).bind(session.id).all();
-  if (!items?.length) return error('장바구니가 비어 있습니다.');
-  const total = items.reduce((sum, item) => sum + item.qty * item.price, 0);
-  const statements = [env.DB.prepare('INSERT INTO orders (session_id, total, status) VALUES (?, ?, \'pending\')').bind(session.id, total)];
-  const orderResult = (await env.DB.batch(statements))[0];
-  const orderId = orderResult.meta.last_row_id;
-  const itemStatements = items.map((item) => env.DB.prepare('INSERT INTO order_items (order_id, product_id, qty, price) VALUES (?, ?, ?, ?)').bind(orderId, item.productId, item.qty, item.price));
-  itemStatements.push(env.DB.prepare('DELETE FROM cart_items WHERE session_id = ?').bind(session.id));
-  await env.DB.batch(itemStatements);
-  return withCookie(json({ orderId }, 201), session.cookie);
-}
+async function createOrder(request, env) { const user = await currentUser(request, env); if (!user) return error('로그인이 필요합니다.', 401); const { results: items } = await env.DB.prepare('SELECT c.product_id AS productId, c.qty, p.price, p.name, p.image_url AS imageUrl FROM cart_items c JOIN products p ON p.id = c.product_id WHERE c.user_id = ? ORDER BY c.id').bind(user.id).all(); if (!items?.length) return error('장바구니가 비어 있습니다.'); const total = items.reduce((sum, item) => sum + item.qty * item.price, 0); const orderResult = (await env.DB.batch([env.DB.prepare("INSERT INTO orders (user_id, total, status) VALUES (?, ?, 'pending')").bind(user.id, total)]))[0]; const orderId = orderResult.meta.last_row_id; const statements = items.map((item) => env.DB.prepare('INSERT INTO order_items (order_id, product_id, qty, price) VALUES (?, ?, ?, ?)').bind(orderId, item.productId, item.qty, item.price)); statements.push(env.DB.prepare('DELETE FROM cart_items WHERE user_id = ?').bind(user.id)); await env.DB.batch(statements); return json({ orderId }, 201); }
 
-async function getOrder(request, env, orderId) {
-  const id = validId(orderId);
-  if (!id) return error('주문을 찾을 수 없습니다.', 404);
-  const session = await sessionFor(request, env);
-  const order = await env.DB.prepare('SELECT id, total, status, created_at AS createdAt FROM orders WHERE id = ? AND session_id = ?').bind(id, session.id).first();
-  if (!order) return error('주문을 찾을 수 없습니다.', 404);
-  const { results: items } = await env.DB.prepare(`
-    SELECT oi.product_id AS productId, oi.qty, oi.price, p.name, p.image_url AS imageUrl
-    FROM order_items oi JOIN products p ON p.id = oi.product_id WHERE oi.order_id = ? ORDER BY oi.id
-  `).bind(id).all();
-  return withCookie(json({ order: { ...order, items } }), session.cookie);
-}
+async function getOrder(request, env, orderId) { const id = validId(orderId); if (!id) return error('주문을 찾을 수 없습니다.', 404); const user = await currentUser(request, env); if (!user) return error('로그인이 필요합니다.', 401); const order = await env.DB.prepare('SELECT id, total, status, created_at AS createdAt FROM orders WHERE id = ? AND user_id = ?').bind(id, user.id).first(); if (!order) return error('주문을 찾을 수 없습니다.', 404); const { results: items } = await env.DB.prepare('SELECT oi.product_id AS productId, oi.qty, oi.price, p.name, p.image_url AS imageUrl FROM order_items oi JOIN products p ON p.id = oi.product_id WHERE oi.order_id = ? ORDER BY oi.id').bind(id).all(); return json({ order: { ...order, items } }); }
 
-async function api(request, env, pathname) {
-  if (pathname === '/api/products' && request.method === 'GET') return products(request, env);
-  const productMatch = pathname.match(/^\/api\/products\/(\d+)$/);
-  if (productMatch && request.method === 'GET') return product(validId(productMatch[1]), env);
-  if (pathname === '/api/cart' && request.method === 'GET') return cart(request, env);
-  if (pathname === '/api/cart/items' && request.method === 'POST') return addCart(request, env);
-  const itemMatch = pathname.match(/^\/api\/cart\/items\/(\d+)$/);
-  if (itemMatch && request.method === 'PATCH') return updateCart(request, env, itemMatch[1]);
-  if (itemMatch && request.method === 'DELETE') return deleteCart(request, env, itemMatch[1]);
-  if (pathname === '/api/orders' && request.method === 'POST') return createOrder(request, env);
-  const orderMatch = pathname.match(/^\/api\/orders\/(\d+)$/);
-  if (orderMatch && request.method === 'GET') return getOrder(request, env, orderMatch[1]);
-  return error('요청을 찾을 수 없습니다.', 404);
-}
+async function mypage(request, env) { const user = await currentUser(request, env); if (!user) return error('로그인이 필요합니다.', 401); const { results: orders } = await env.DB.prepare('SELECT id, total, status, created_at AS createdAt FROM orders WHERE user_id = ? ORDER BY id DESC').bind(user.id).all(); const detailed=[]; for (const order of orders || []) { const { results: items } = await env.DB.prepare('SELECT oi.product_id AS productId, oi.qty, oi.price, p.name, p.image_url AS imageUrl FROM order_items oi JOIN products p ON p.id = oi.product_id WHERE oi.order_id = ? ORDER BY oi.id').bind(order.id).all(); detailed.push({ ...order, items }); } return json({ user: { id: user.id, email: user.email, name: user.name }, orders: detailed }); }
+async function api(request, env, pathname) { if (pathname === '/api/auth/me' && request.method === 'GET') return authMe(request, env); if (pathname === '/api/auth/signup' && request.method === 'POST') return signup(request, env); if (pathname === '/api/auth/login' && request.method === 'POST') return login(request, env); if (pathname === '/api/auth/logout' && request.method === 'POST') return logout(request, env); if (pathname === '/api/mypage' && request.method === 'GET') return mypage(request, env); if (pathname === '/api/products' && request.method === 'GET') return products(request, env); const productMatch = pathname.match(/^\/api\/products\/(\d+)$/); if (productMatch && request.method === 'GET') return product(validId(productMatch[1]), env); if (pathname === '/api/cart' && request.method === 'GET') return cart(request, env); if (pathname === '/api/cart/items' && request.method === 'POST') return addCart(request, env); const itemMatch = pathname.match(/^\/api\/cart\/items\/(\d+)$/); if (itemMatch && request.method === 'PATCH') return updateCart(request, env, itemMatch[1]); if (itemMatch && request.method === 'DELETE') return deleteCart(request, env, itemMatch[1]); if (pathname === '/api/orders' && request.method === 'POST') return createOrder(request, env); const orderMatch = pathname.match(/^\/api\/orders\/(\d+)$/); if (orderMatch && request.method === 'GET') return getOrder(request, env, orderMatch[1]); return error('요청을 찾을 수 없습니다.', 404); }
 
 function pageFor(pathname) {
   if (pathname === '/') return '/index.html';
   if (pathname === '/cart') return '/cart';
+  if (pathname === '/auth') return '/auth';
+  if (pathname === '/mypage') return '/mypage';
   if (/^\/products\/\d+$/.test(pathname)) return '/detail';
   if (/^\/orders\/\d+$/.test(pathname)) return '/order';
   return null;
