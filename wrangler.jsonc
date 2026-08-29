@@ -7,7 +7,7 @@
     {
       "binding": "DB",
       "database_name": "shop-db",
-      "database_id": "REPLACE_AFTER_D1_CREATE",
+      "database_id": "a438e448-d697-434d-ada9-80cee1f05ebf",
       "migrations_dir": "migrations"
     }
   ]
