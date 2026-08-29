@@ -27,3 +27,5 @@
 .summary-card{border-radius:0;border-top:2px solid var(--color-neutral-950)}
 .auth-card,.profile-card,.my-order-card{border-radius:0}
 @media (max-width:767px){.header-inner{min-height:112px;padding-top:12px;padding-bottom:12px;grid-template-columns:1fr auto;row-gap:8px}.site-title{font-size:36px}.site-header nav{grid-column:1/-1;grid-row:2;justify-content:flex-start;gap:18px;overflow-x:auto}.auth-nav{grid-column:2;grid-row:1}.page-heading{padding-top:36px}.category-tabs{padding-bottom:12px}.product-grid{gap:24px 12px}.detail-layout{gap:24px;padding-top:24px}.summary-card{border-top-width:2px}}
+
+.payment-panel{margin:32px 0;padding:24px;border:1px solid var(--color-neutral-200);background:var(--color-surface)}.payment-panel h2{margin:0 0 16px;font-size:20px}.payment-panel #payment-button{margin-top:16px;width:100%}.payment-panel .status-message{min-height:24px}
