@@ -31,3 +31,4 @@
 .payment-panel{margin:32px 0;padding:24px;border:1px solid var(--color-neutral-200);background:var(--color-surface)}.payment-panel h2{margin:0 0 16px;font-size:20px}.payment-panel #payment-button{margin-top:16px;width:100%}.payment-panel .status-message{min-height:24px}
 
 .english-intro-control{margin:0 0 24px}.english-intro-control .status-message{min-height:20px;margin:8px 0 0}.english-intro{margin:12px 0 0;padding:16px;border:1px solid var(--color-neutral-200);background:var(--color-surface-muted);color:var(--color-neutral-700)}
+.my-order-actions{display:flex;align-items:center;gap:16px}.order-delete{font-size:13px}@media (max-width:767px){.my-order-actions{justify-content:space-between}}
