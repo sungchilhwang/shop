@@ -18,7 +18,8 @@ function error(message, status = 400) {
 function parseCookie(request, name) {
   const value = request.headers.get('Cookie') || '';
   const part = value.split(';').map((v) => v.trim()).find((v) => v.startsWith(`${name}=`));
-  return part ? decodeURIComponent(part.slice(name.length + 1)) : null;
+  if (!part) return null;
+  try { return decodeURIComponent(part.slice(name.length + 1)); } catch { return null; }
 }
 
 async function sessionFor(request, env) {
