@@ -2,3 +2,28 @@
 
 .auth-nav{display:flex;align-items:center;gap:12px;margin-left:auto}.auth-nav a{color:var(--color-primary-700);font-weight:700;text-decoration:none}.text-button{border:0;background:transparent;color:var(--color-danger-700);font:inherit;cursor:pointer;min-height:44px}.auth-page{padding-bottom:64px}.auth-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px}.auth-card,.profile-card,.my-order-card{border:1px solid var(--color-neutral-200);border-radius:12px;padding:24px;background:var(--color-surface)}.auth-card h2,.subheading{margin:0 0 20px;font-size:24px}.auth-card form{display:flex;flex-direction:column;gap:8px}.auth-card label{font-weight:700;margin-top:8px}.auth-card input{height:44px;border:1px solid var(--color-neutral-200);border-radius:8px;padding:0 12px;font:inherit}.auth-card .button{margin-top:16px}.profile-card{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:32px}.profile-card h2,.profile-card p{margin:0}.profile-card p{color:var(--color-neutral-700)}.subheading{margin-top:0}.my-orders{display:grid;gap:16px;padding-bottom:64px}.my-order-card{display:grid;grid-template-columns:1fr auto;gap:12px}.my-order-card h3,.my-order-card p{margin:0}.my-order-card ul{grid-column:1/-1;margin:8px 0 0;padding:12px 0 0;border-top:1px solid var(--color-neutral-200);list-style:none;color:var(--color-neutral-700)}.my-order-card li+li{margin-top:4px}.order-status{color:var(--color-primary-700);font-weight:700}
 @media (max-width:767px){.header-inner{flex-wrap:wrap;gap:8px}.auth-nav{width:100%;justify-content:flex-end}.auth-grid{grid-template-columns:1fr}.profile-card{align-items:flex-start;flex-direction:column}.my-order-card{grid-template-columns:1fr}}
+
+/* SSG 참고 구조: 정보 밀도와 정렬을 우선한 공통 화면 보정 */
+.site-header{box-shadow:0 1px 0 var(--color-neutral-200)}
+.header-inner{min-height:84px;padding-top:20px;padding-bottom:20px;display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center}
+.site-title{color:var(--color-neutral-950);font-size:20px;letter-spacing:-.03em}
+.site-header nav{justify-content:center;gap:32px}
+.site-header nav a{font-size:15px;color:var(--color-neutral-950)}
+.auth-nav{justify-content:flex-end;white-space:nowrap}
+.auth-nav a{font-size:14px;color:var(--color-neutral-700)}
+.page-heading{padding-top:56px;padding-bottom:28px;border-bottom:0}
+.page-heading h1{letter-spacing:-.04em}
+.category-tabs{padding:0 0 20px;border-bottom:2px solid var(--color-neutral-950)}
+.category-tab{border:0;border-radius:0;height:48px;padding:0 18px;color:var(--color-neutral-700);font-weight:700}
+.category-tab.is-active{background:var(--color-neutral-950);color:var(--color-surface)}
+.product-grid{gap:32px 20px;padding-top:28px}
+.product-image-wrap,.detail-image-wrap{background:var(--color-surface-muted);border-radius:0}
+.product-meta{padding-top:14px}
+.product-category{font-size:12px}
+.product-name{font-size:15px;line-height:1.5}
+.product-price{font-size:19px;letter-spacing:-.02em}
+.detail-layout{gap:80px;padding-top:40px}
+.detail-info h1{letter-spacing:-.04em}
+.summary-card{border-radius:0;border-top:2px solid var(--color-neutral-950)}
+.auth-card,.profile-card,.my-order-card{border-radius:0}
+@media (max-width:767px){.header-inner{min-height:112px;padding-top:12px;padding-bottom:12px;grid-template-columns:1fr auto;row-gap:8px}.site-title{font-size:18px}.site-header nav{grid-column:1/-1;grid-row:2;justify-content:flex-start;gap:18px;overflow-x:auto}.auth-nav{grid-column:2;grid-row:1}.page-heading{padding-top:36px}.category-tabs{padding-bottom:12px}.product-grid{gap:24px 12px}.detail-layout{gap:24px;padding-top:24px}.summary-card{border-top-width:2px}}
