@@ -138,11 +138,11 @@ async function productIntroduction(request, env) {
   if (!env.AI) return error('영어 소개 기능이 준비되지 않았습니다.', 503);
   const row = await env.DB.prepare('SELECT name, description FROM products WHERE id = ?').bind(productId).first();
   if (!row) return error('상품을 찾을 수 없습니다.', 404);
-  const prompt = `Translate the provided product name and description into a factual English ecommerce introduction in no more than three concise sentences. Translate literally and preserve only facts explicitly present. Do not add adjectives, benefits, quality claims, origin, ingredients, certifications, dimensions, performance, or inferred details. Return plain text only, without headings, bullets, quotes, or markdown.\n\nProduct name: ${String(row.name).slice(0, 200)}\nProduct description: ${String(row.description || '').slice(0, 600)}`;
+  const prompt = `Translate only the provided product description into a factual English ecommerce introduction in no more than three concise sentences. Translate literally and preserve only facts explicitly present. Do not creatively translate the product name; omit it if uncertain. Do not add adjectives, benefits, quality claims, origin, ingredients, certifications, dimensions, performance, or inferred details. Return plain text only, without headings, bullets, quotes, or markdown.\n\nProduct name: ${String(row.name).slice(0, 200)}\nProduct description: ${String(row.description || '').slice(0, 600)}`;
   try {
     const result = await env.AI.run('@cf/meta/llama-3.2-3b-instruct', {
       messages: [
-        { role: 'system', content: 'Write a factual English ecommerce introduction in no more than three concise sentences. Use only the product name and description provided. Do not invent or imply origin, ingredients, certifications, dimensions, performance, or other facts. Return plain text only, without headings, bullets, quotes, or markdown.' },
+        { role: 'system', content: 'Write a literal, factual English translation of the provided product description in no more than three concise sentences. Use only the provided text. Do not creatively translate names or add adjectives, benefits, quality claims, origin, ingredients, certifications, dimensions, performance, or other facts. Return plain text only, without headings, bullets, quotes, or markdown.' },
         { role: 'user', content: prompt },
       ],
       max_tokens: 120,
