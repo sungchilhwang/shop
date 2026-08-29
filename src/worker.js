@@ -141,9 +141,9 @@ async function productIntroduction(request, env) {
   if (!row) return error('상품을 찾을 수 없습니다.', 404);
   const prompt = `Translate the product name and description below into a factual English ecommerce introduction in no more than three concise sentences. Translate literally and preserve only facts explicitly present. Do not add adjectives, benefits, quality claims, origin, ingredients, certifications, dimensions, performance, or any inferred details. Return plain text only, with no headings, bullets, quotes, or markdown.\n\nProduct name: ${String(row.name).slice(0, 200)}\nProduct description: ${String(row.description || '').slice(0, 600)}`;
   try {
-    const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + encodeURIComponent(apiKey), {
+    const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
       body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0, maxOutputTokens: 120 } }),
     });
     const result = await response.json().catch(() => ({}));
