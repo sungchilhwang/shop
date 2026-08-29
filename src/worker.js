@@ -142,11 +142,11 @@ async function productIntroduction(request, env) {
   try {
     const result = await env.AI.run('@cf/meta/llama-3.2-3b-instruct', {
       messages: [
-        { role: 'system', content: 'Write a factual English ecommerce introduction in no more than three concise sentences. Use only the product name and description provided. Do not invent or imply origin, ingredients, certifications, dimensions, performance, or other facts. Return plain text only, without headings, bullets, quotes, or markdown.' },
+        { role: 'system', content: 'Translate the provided product name and description into a factual English ecommerce introduction in no more than three concise sentences. Translate literally and preserve only facts explicitly present. Do not add adjectives, benefits, quality claims, or inferred details. For example, translate 가죽 as leather, never genuine leather. Do not invent or imply origin, ingredients, certifications, dimensions, performance, or other facts. Return plain text only, without headings, bullets, quotes, or markdown.' },
         { role: 'user', content: prompt },
       ],
       max_tokens: 120,
-      temperature: 0.2,
+      temperature: 0,
     });
     const introduction = typeof result?.response === 'string' ? result.response.trim() : '';
     if (!introduction) return error('영어 소개를 만들지 못했습니다.', 502);
