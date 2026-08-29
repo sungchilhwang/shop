@@ -156,6 +156,7 @@ export default {
     headers.set('X-Content-Type-Options', 'nosniff');
     headers.set('Referrer-Policy', 'same-origin');
     headers.set('Content-Security-Policy', "default-src 'self'; img-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'");
+    if (pathname === '/cart' || pathname === '/mypage' || pathname.startsWith('/orders') || pathname.startsWith('/api/auth') || pathname === '/api/mypage' || pathname.startsWith('/api/cart') || pathname.startsWith('/api/orders')) headers.set('Cache-Control', 'no-store');
     return new Response(response.body, { status: response.status, headers });
   },
 };
