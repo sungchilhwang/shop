@@ -135,21 +135,20 @@ async function productIntroduction(request, env) {
   const body = await request.json().catch(() => null);
   const productId = validId(body?.productId);
   if (!productId) return error('상품 정보를 확인해 주세요.', 400);
-  if (!env.AI) return error('영어 소개 기능이 준비되지 않았습니다.', 503);
+  const apiKey = typeof env.GEMINI_API_KEY === 'string' ? env.GEMINI_API_KEY.trim() : '';
+  if (!apiKey) return error('영어 소개 기능이 준비되지 않았습니다.', 503);
   const row = await env.DB.prepare('SELECT name, description FROM products WHERE id = ?').bind(productId).first();
   if (!row) return error('상품을 찾을 수 없습니다.', 404);
-  const prompt = `Product name: ${String(row.name).slice(0, 200)}\nProduct description: ${String(row.description || '').slice(0, 600)}`;
+  const prompt = `Translate the product name and description below into a factual English ecommerce introduction in no more than three concise sentences. Translate literally and preserve only facts explicitly present. Do not add adjectives, benefits, quality claims, origin, ingredients, certifications, dimensions, performance, or any inferred details. Return plain text only, with no headings, bullets, quotes, or markdown.\n\nProduct name: ${String(row.name).slice(0, 200)}\nProduct description: ${String(row.description || '').slice(0, 600)}`;
   try {
-    const result = await env.AI.run('@cf/meta/llama-3.2-3b-instruct', {
-      messages: [
-        { role: 'system', content: 'Translate the provided product name and description into a factual English ecommerce introduction in no more than three concise sentences. Translate literally and preserve only facts explicitly present. Do not add adjectives, benefits, quality claims, or inferred details. For example, translate 가죽 as leather, never genuine leather. Do not invent or imply origin, ingredients, certifications, dimensions, performance, or other facts. Return plain text only, without headings, bullets, quotes, or markdown.' },
-        { role: 'user', content: prompt },
-      ],
-      max_tokens: 120,
-      temperature: 0,
+    const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + encodeURIComponent(apiKey), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0, maxOutputTokens: 120 } }),
     });
-    const introduction = typeof result?.response === 'string' ? result.response.trim() : '';
-    if (!introduction) return error('영어 소개를 만들지 못했습니다.', 502);
+    const result = await response.json().catch(() => ({}));
+    const introduction = result?.candidates?.[0]?.content?.parts?.map((part) => part.text || '').join('').trim() || '';
+    if (!response.ok || !introduction) return error('영어 소개를 만들지 못했습니다.', 502);
     return json({ introduction });
   } catch (err) {
     return error('영어 소개를 만들지 못했습니다.', 502);
