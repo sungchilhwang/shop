@@ -148,7 +148,7 @@ async function productIntroduction(request, env) {
     });
     const result = await response.json().catch(() => ({}));
     const introduction = result?.candidates?.[0]?.content?.parts?.map((part) => part.text || '').join('').trim() || '';
-    if (!response.ok || !introduction) return error('영어 소개를 만들지 못했습니다.', 502);
+    if (!response.ok || !introduction) { console.error('Gemini API error', response.status, result?.error?.status || result?.error?.message || 'empty_response'); return error('영어 소개를 만들지 못했습니다.', 502); }
     return json({ introduction });
   } catch (err) {
     return error('영어 소개를 만들지 못했습니다.', 502);
