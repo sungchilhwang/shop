@@ -56,14 +56,14 @@ async function products(request, env) {
   const category = new URL(request.url).searchParams.get('category');
   if (category && !CATEGORIES.has(category)) return error('분류가 올바르지 않습니다.');
   const query = category
-    ? env.DB.prepare('SELECT id, name, price, description, category, image_url AS imageUrl FROM products WHERE category = ? ORDER BY id').bind(category)
-    : env.DB.prepare('SELECT id, name, price, description, category, image_url AS imageUrl FROM products ORDER BY id');
+    ? env.DB.prepare('SELECT p.id, p.name, p.price, p.description, c.name AS category, p.image_url AS imageUrl FROM products p JOIN categories c ON c.id = p.category_id WHERE c.name = ? ORDER BY p.id').bind(category)
+    : env.DB.prepare('SELECT p.id, p.name, p.price, p.description, c.name AS category, p.image_url AS imageUrl FROM products p JOIN categories c ON c.id = p.category_id ORDER BY p.id');
   const { results } = await query.all();
   return json({ products: results });
 }
 
 async function product(id, env) {
-  const row = await env.DB.prepare('SELECT id, name, price, description, category, image_url AS imageUrl FROM products WHERE id = ?').bind(id).first();
+  const row = await env.DB.prepare('SELECT p.id, p.name, p.price, p.description, c.name AS category, p.image_url AS imageUrl FROM products p JOIN categories c ON c.id = p.category_id WHERE p.id = ?').bind(id).first();
   return row ? json({ product: row }) : error('상품을 찾을 수 없습니다.', 404);
 }
 
@@ -71,8 +71,8 @@ async function cart(request, env) {
   const session = await sessionFor(request, env);
   const rows = await env.DB.prepare(`
     SELECT c.id, c.product_id AS productId, c.qty, p.name, p.price, p.description,
-           p.category, p.image_url AS imageUrl, (c.qty * p.price) AS subtotal
-    FROM cart_items c JOIN products p ON p.id = c.product_id
+           cat.name AS category, p.image_url AS imageUrl, (c.qty * p.price) AS subtotal
+    FROM cart_items c JOIN products p ON p.id = c.product_id JOIN categories cat ON cat.id = p.category_id
     WHERE c.session_id = ? ORDER BY c.id
   `).bind(session.id).all();
   const items = rows.results || [];
